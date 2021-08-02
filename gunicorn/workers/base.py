@@ -34,7 +34,8 @@ class Worker(object):
 
     PIPE = []
 
-    def __init__(self, age, ppid, sockets, app, timeout, cfg, log):
+
+    def __init__(self, age, ppid, sockets, app, timeout, cfg, log, master_wakeup):
         """\
         This is called pre-fork so it shouldn't do anything to the
         current process. If there's a need to make process wide
@@ -50,6 +51,7 @@ class Worker(object):
         self.booted = False
         self.aborted = False
         self.reloader = None
+        self.master_wakeup = master_wakeup
 
         self.nr = 0
 
@@ -82,7 +84,7 @@ class Worker(object):
         """
         raise NotImplementedError()
 
-    def init_process(self):
+    def init_process(self, is_new):
         """\
         If you override this method in a subclass, the last statement
         in the function should be to call this method with
@@ -139,7 +141,7 @@ class Worker(object):
 
         # Enter main run loop
         self.booted = True
-        self.run()
+        self.run(is_new) ###
 
     def load_wsgi(self):
         try:

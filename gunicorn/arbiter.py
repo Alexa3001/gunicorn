@@ -17,6 +17,11 @@ from gunicorn import sock, systemd, util
 
 from gunicorn import __version__, SERVER_SOFTWARE
 
+#########################
+from queue import Queue
+#########################
+
+
 
 class Arbiter(object):
     """
@@ -24,6 +29,15 @@ class Arbiter(object):
     kills them if needed. It also manages application reloading
     via SIGHUP/USR2.
     """
+
+    ### a queue containing the workers which need to be replaced and which have already been read from the pipe
+    ### these workers are still handling requests while they are waiting for new workers to be initialized
+    old_workers = Queue()
+
+    ### a queue containing the new workers which have already reached the "run" function and started handling requests
+    new_workers = Queue()
+
+
 
     # A flag indicating if a worker failed to
     # to boot. If a worker process exist with
@@ -38,6 +52,11 @@ class Arbiter(object):
     LISTENERS = []
     WORKERS = {}
     PIPE = []
+
+
+    OLD_PIPE = [] # Pipe where workers write their pids when they want to be replaced
+    NEW_PIPE = [] # Pipe where new workers write their pids when they are done with the initialization
+
 
     # I love dynamic languages
     SIG_QUEUE = []
@@ -117,11 +136,32 @@ class Arbiter(object):
         if self.cfg.preload_app:
             self.app.wsgi()
 
+
+    # Initialize the pipe in which the workers write their pids when they want to be replaced
+    def init_old_pipe(self):
+        assert self.OLD_PIPE == [], "second pipe already initialized"
+        self.OLD_PIPE = pair = os.pipe()
+        for p in pair:
+            util.set_non_blocking(p)
+            util.close_on_exec(p)
+
+    # Initialize the pipe in which new workers write their pids when they are ready
+    def init_new_pipe(self):
+        assert self.NEW_PIPE == [], "second pipe already initialized"
+        self.NEW_PIPE = pair = os.pipe()
+        for p in pair:
+            util.set_non_blocking(p)
+            util.close_on_exec(p)
+
+
     def start(self):
         """\
         Initialize the arbiter. Start listening and set pidfile if needed.
         """
         self.log.info("Starting gunicorn %s", __version__)
+
+        ###
+        self.log.info("I am the Master")
 
         if 'GUNICORN_PID' in os.environ:
             self.master_pid = int(os.environ.get('GUNICORN_PID'))
@@ -138,6 +178,12 @@ class Arbiter(object):
         self.cfg.on_starting(self)
 
         self.init_signals()
+
+        ### Initialize the pipe in which the workers write their pids when they want to be replaced
+        self.init_old_pipe()
+
+        ### Initialize the pipe in which the new workers write their pids when they are ready
+        self.init_new_pipe()
 
         if not self.LISTENERS:
             fds = None
@@ -207,6 +253,7 @@ class Arbiter(object):
                 sig = self.SIG_QUEUE.pop(0) if self.SIG_QUEUE else None
                 if sig is None:
                     self.sleep()
+                    self.replace_workers()
                     self.murder_workers()
                     self.manage_workers()
                     continue
@@ -327,15 +374,28 @@ class Arbiter(object):
             # reset proctitle
             util._setproctitle("master [%s]" % self.proc_name)
 
-    def wakeup(self):
+    ### If the function is called without parameters, it is just the old wakeup function
+    ### If the parameter is positive, it indicates the pid of a worker which wants to be replaced
+    ### If the parameter is negative, it indicates the pid of a new worker which is ready
+    def wakeup(self, worker = 0):
         """\
         Wake up the arbiter by writing to the PIPE
         """
-        try:
-            os.write(self.PIPE[1], b'.')
-        except IOError as e:
-            if e.errno not in [errno.EAGAIN, errno.EINTR]:
-                raise
+        if(not worker):
+            try:
+                os.write(self.PIPE[1], b'.')
+            except IOError as e:
+                if e.errno not in [errno.EAGAIN, errno.EINTR]:
+                    raise
+            return
+
+        if(worker > 0): # old worker needs to be replaced
+            os.write(self.OLD_PIPE[1], worker.to_bytes(2, 'big'))
+        else: # new worker is ready
+            worker = -worker
+            os.write(self.NEW_PIPE[1], worker.to_bytes(2, 'big'))
+
+        self.wakeup() # call initial wakeup function in the end
 
     def halt(self, reason=None, exit_status=0):
         """ halt arbiter """
@@ -504,6 +564,7 @@ class Arbiter(object):
             else:
                 self.kill_worker(pid, signal.SIGKILL)
 
+
     def reap_workers(self):
         """\
         Reap workers to avoid zombie processes
@@ -542,6 +603,78 @@ class Arbiter(object):
             if e.errno != errno.ECHILD:
                 raise
 
+
+
+
+    def search_for_workers_to_be_replaced(self):
+        try:
+            ready = select.select([self.OLD_PIPE[0]], [], [], 0.0)
+            if not ready[0]:  # nothing to be read from the pipe
+                return
+
+            while True:
+                worker_pid_in_bytes = os.read(self.OLD_PIPE[0], 2)
+                if (len(worker_pid_in_bytes) == 0):
+                    break
+
+                worker_pid = int.from_bytes(worker_pid_in_bytes, 'big')
+                self.old_workers.put(worker_pid)
+                self.spawn_worker(is_new = True) # spawn *new* worker
+                self.num_workers += 1
+                self.log.debug("Worker with pid %s wants to be replaced", worker_pid)
+
+        except (select.error, OSError) as e:
+            # TODO: select.error is a subclass of OSError since Python 3.3.
+            error_number = getattr(e, 'errno', e.args[0])
+            if error_number not in [errno.EAGAIN, errno.EINTR]:
+                raise
+        except KeyboardInterrupt:
+            sys.exit()
+
+
+    def search_for_new_workers_which_are_ready(self):
+        try:
+            ready = select.select([self.NEW_PIPE[0]], [], [], 0.0)
+            if not ready[0]: #nothing to be read from the pipe
+                return
+
+            while True:
+                worker_pid_in_bytes = os.read(self.NEW_PIPE[0], 2)
+                if(len(worker_pid_in_bytes) == 0):
+                    break
+
+                worker_pid = int.from_bytes(worker_pid_in_bytes, 'big')
+                self.new_workers.put(worker_pid)
+                self.log.debug("Worker with pid %s is ready", worker_pid)
+
+        except (select.error, OSError) as e:
+            # TODO: select.error is a subclass of OSError since Python 3.3.
+            error_number = getattr(e, 'errno', e.args[0])
+            if error_number not in [errno.EAGAIN, errno.EINTR]:
+                raise
+        except KeyboardInterrupt:
+            sys.exit()
+
+
+
+    ###
+    def replace_workers(self):
+        self.search_for_workers_to_be_replaced()
+        self.search_for_new_workers_which_are_ready()
+
+        #self.log.debug("%s workers want to be replaced", self.old_workers.qsize())
+        #self.log.debug("%s new workers ready", self.new_workers.qsize())
+
+        while(not self.new_workers.empty()):
+            assert not self.old_workers.empty(), "New worker ready, but no old worker needs to be replaced!"
+            new_worker = self.new_workers.get()
+            old_worker = self.old_workers.get()
+            self.log.info("Worker with pid %s was replaced by worker with pid %s", old_worker, new_worker)
+            self.kill_worker(old_worker, signal.SIGTERM) # kill the old worker gracefully
+            assert self.num_workers > 0, "num_workers is not positive!"
+            self.num_workers -= 1
+
+
     def manage_workers(self):
         """\
         Maintain the number of workers by spawning or killing
@@ -564,11 +697,13 @@ class Arbiter(object):
                                   "value": active_worker_count,
                                   "mtype": "gauge"})
 
-    def spawn_worker(self):
+    def spawn_worker(self, is_new = False):
         self.worker_age += 1
+
+        ### Added the wakeup() function of the master as a parameter for the new worker
         worker = self.worker_class(self.worker_age, self.pid, self.LISTENERS,
                                    self.app, self.timeout / 2.0,
-                                   self.cfg, self.log)
+                                   self.cfg, self.log, self.wakeup)
         self.cfg.pre_fork(self, worker)
         pid = os.fork()
         if pid != 0:
@@ -586,7 +721,8 @@ class Arbiter(object):
             util._setproctitle("worker [%s]" % self.proc_name)
             self.log.info("Booting worker with pid: %s", worker.pid)
             self.cfg.post_fork(self, worker)
-            worker.init_process()
+            worker.init_process(is_new) ###
+            self.log.debug("Everything good for %s", worker.pid)
             sys.exit(0)
         except SystemExit:
             raise

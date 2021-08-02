@@ -109,7 +109,12 @@ class SyncWorker(base.Worker):
             if not self.is_parent_alive():
                 return
 
-    def run(self):
+    def run(self, is_new): ###
+        ### Notify master that this worker is ready
+        if(is_new):
+            self.master_wakeup(-self.pid)
+
+
         # if no timeout is given the worker will never wait and will
         # use the CPU for nothing. This minimal timeout prevent it.
         timeout = self.timeout or 0.5
@@ -173,9 +178,14 @@ class SyncWorker(base.Worker):
             # the backend.
             resp.force_close()
             self.nr += 1
-            if self.nr >= self.max_requests:
-                self.log.info("Autorestarting worker after current request.")
-                self.alive = False
+            if self.nr == self.max_requests: ### change >= to ==
+                # self.log.info("Autorestarting worker after current request.")
+                # self.alive = False
+
+                self.log.info("Worker %s tells master to restart it.", self.pid)
+                self.master_wakeup(self.pid)
+
+
             respiter = self.wsgi(environ, resp.start_response)
             try:
                 if isinstance(respiter, environ['wsgi.file_wrapper']):
