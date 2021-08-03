@@ -35,7 +35,7 @@ class Worker(object):
     PIPE = []
 
 
-    def __init__(self, age, ppid, sockets, app, timeout, cfg, log, master_wakeup):
+    def __init__(self, age, ppid, sockets, app, timeout, cfg, log, master_wakeup, call_when_tired, call_when_ready):
         """\
         This is called pre-fork so it shouldn't do anything to the
         current process. If there's a need to make process wide
@@ -52,6 +52,8 @@ class Worker(object):
         self.aborted = False
         self.reloader = None
         self.master_wakeup = master_wakeup
+        self.call_when_tired = call_when_tired
+        self.call_when_ready = call_when_ready
 
         self.nr = 0
 

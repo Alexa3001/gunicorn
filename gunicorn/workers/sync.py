@@ -112,7 +112,7 @@ class SyncWorker(base.Worker):
     def run(self, is_new): ###
         ### Notify master that this worker is ready
         if(is_new):
-            self.master_wakeup(-self.pid)
+            self.call_when_ready(self.pid)
 
 
         # if no timeout is given the worker will never wait and will
@@ -183,7 +183,7 @@ class SyncWorker(base.Worker):
                 # self.alive = False
 
                 self.log.info("Worker %s tells master to restart it.", self.pid)
-                self.master_wakeup(self.pid)
+                self.call_when_tired(self.pid)
 
 
             respiter = self.wsgi(environ, resp.start_response)

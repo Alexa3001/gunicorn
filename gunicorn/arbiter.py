@@ -374,28 +374,28 @@ class Arbiter(object):
             # reset proctitle
             util._setproctitle("master [%s]" % self.proc_name)
 
-    ### If the function is called without parameters, it is just the old wakeup function
-    ### If the parameter is positive, it indicates the pid of a worker which wants to be replaced
-    ### If the parameter is negative, it indicates the pid of a new worker which is ready
-    def wakeup(self, worker = 0):
+
+    def wakeup(self):
         """\
         Wake up the arbiter by writing to the PIPE
         """
-        if(not worker):
-            try:
-                os.write(self.PIPE[1], b'.')
-            except IOError as e:
-                if e.errno not in [errno.EAGAIN, errno.EINTR]:
-                    raise
-            return
+        try:
+            os.write(self.PIPE[1], b'.')
+        except IOError as e:
+            if e.errno not in [errno.EAGAIN, errno.EINTR]:
+                raise
 
-        if(worker > 0): # old worker needs to be replaced
-            os.write(self.OLD_PIPE[1], worker.to_bytes(2, 'big'))
-        else: # new worker is ready
-            worker = -worker
-            os.write(self.NEW_PIPE[1], worker.to_bytes(2, 'big'))
+    # Worker is ready to handle requests
+    def worker_is_ready(self, worker):
+        os.write(self.NEW_PIPE[1], worker.to_bytes(2, 'big'))
+        self.wakeup()
 
-        self.wakeup() # call initial wakeup function in the end
+    # Worker wants to be replaced
+    def worker_is_tired(self, worker):
+        os.write(self.OLD_PIPE[1], worker.to_bytes(2, 'big'))
+        self.wakeup()
+
+
 
     def halt(self, reason=None, exit_status=0):
         """ halt arbiter """
@@ -671,6 +671,7 @@ class Arbiter(object):
             old_worker = self.old_workers.get()
             self.log.info("Worker with pid %s was replaced by worker with pid %s", old_worker, new_worker)
             self.kill_worker(old_worker, signal.SIGTERM) # kill the old worker gracefully
+            self.WORKERS.pop(old_worker)
             assert self.num_workers > 0, "num_workers is not positive!"
             self.num_workers -= 1
 
@@ -697,16 +698,18 @@ class Arbiter(object):
                                   "value": active_worker_count,
                                   "mtype": "gauge"})
 
+        self.log.debug("In the main loop, there are %s workers: %s", self.num_workers, list(self.WORKERS.keys()))
+
     def spawn_worker(self, is_new = False):
         self.worker_age += 1
 
         ### Added the wakeup() function of the master as a parameter for the new worker
         worker = self.worker_class(self.worker_age, self.pid, self.LISTENERS,
                                    self.app, self.timeout / 2.0,
-                                   self.cfg, self.log, self.wakeup)
+                                   self.cfg, self.log, self.wakeup, self.worker_is_tired, self.worker_is_ready)
         self.cfg.pre_fork(self, worker)
         pid = os.fork()
-        if pid != 0:
+        if pid != 0: # Parent process
             worker.pid = pid
             self.WORKERS[pid] = worker
             return pid
@@ -722,7 +725,7 @@ class Arbiter(object):
             self.log.info("Booting worker with pid: %s", worker.pid)
             self.cfg.post_fork(self, worker)
             worker.init_process(is_new) ###
-            self.log.debug("Everything good for %s", worker.pid)
+            self.log.debug("Worker %s is about to close without problems", worker.pid)
             sys.exit(0)
         except SystemExit:
             raise
