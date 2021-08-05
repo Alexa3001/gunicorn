@@ -17,9 +17,6 @@ from gunicorn import sock, systemd, util
 
 from gunicorn import __version__, SERVER_SOFTWARE
 
-#########################
-from queue import Queue
-#########################
 
 
 
@@ -37,6 +34,8 @@ class Arbiter(object):
     ### a queue containing the new workers which have already reached the "run" function and started handling requests
     new_workers = []
 
+    ### Maximum number of workers that are allowed to restart at the same time
+    MAX_RESTARTING_WORKERS = 1
 
 
     # A flag indicating if a worker failed to
@@ -612,7 +611,7 @@ class Arbiter(object):
             if not ready[0]:  # nothing to be read from the pipe
                 return
 
-            while True:
+            while len(self.old_workers) < self.MAX_RESTARTING_WORKERS:
                 worker_pid_in_bytes = os.read(self.OLD_PIPE[0], 2)
                 if (len(worker_pid_in_bytes) == 0):
                     break
