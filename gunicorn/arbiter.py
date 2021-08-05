@@ -32,10 +32,10 @@ class Arbiter(object):
 
     ### a queue containing the workers which need to be replaced and which have already been read from the pipe
     ### these workers are still handling requests while they are waiting for new workers to be initialized
-    old_workers = Queue()
+    old_workers = []
 
     ### a queue containing the new workers which have already reached the "run" function and started handling requests
-    new_workers = Queue()
+    new_workers = []
 
 
 
@@ -618,7 +618,7 @@ class Arbiter(object):
                     break
 
                 worker_pid = int.from_bytes(worker_pid_in_bytes, 'big')
-                self.old_workers.put(worker_pid)
+                self.old_workers.append(worker_pid)
                 self.spawn_worker(is_new = True) # spawn *new* worker
                 self.num_workers += 1
                 self.log.debug("Worker with pid %s wants to be replaced", worker_pid)
@@ -644,7 +644,7 @@ class Arbiter(object):
                     break
 
                 worker_pid = int.from_bytes(worker_pid_in_bytes, 'big')
-                self.new_workers.put(worker_pid)
+                self.new_workers.append(worker_pid)
                 self.log.debug("Worker with pid %s is ready", worker_pid)
 
         except (select.error, OSError) as e:
@@ -662,13 +662,10 @@ class Arbiter(object):
         self.search_for_workers_to_be_replaced()
         self.search_for_new_workers_which_are_ready()
 
-        #self.log.debug("%s workers want to be replaced", self.old_workers.qsize())
-        #self.log.debug("%s new workers ready", self.new_workers.qsize())
-
-        while(not self.new_workers.empty()):
-            assert not self.old_workers.empty(), "New worker ready, but no old worker needs to be replaced!"
-            new_worker = self.new_workers.get()
-            old_worker = self.old_workers.get()
+        while(self.new_workers):
+            assert self.old_workers, "New worker ready, but no old worker needs to be replaced!"
+            new_worker = self.new_workers.pop(0)
+            old_worker = self.old_workers.pop(0)
             self.log.info("Worker with pid %s was replaced by worker with pid %s", old_worker, new_worker)
             self.kill_worker(old_worker, signal.SIGTERM) # kill the old worker gracefully
             self.WORKERS.pop(old_worker)
