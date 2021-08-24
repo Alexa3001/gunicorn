@@ -4,7 +4,8 @@
 # See the NOTICE for more information.
 #
 
-from datetime import datetime
+import datetime as dt
+from itertools import chain
 import errno
 import os
 import select
@@ -12,6 +13,7 @@ import socket
 import ssl
 import sys
 
+import json
 import gunicorn.http as http
 import gunicorn.http.wsgi as wsgi
 import gunicorn.util as util
@@ -166,11 +168,14 @@ class SyncWorker(base.Worker):
             util.close(client)
 
     def handle_request(self, listener, req, client, addr):
+        # time 1
+        time1 = int((dt.datetime.utcnow() - dt.datetime(1970,1,1)).total_seconds() * 1e6)
+
         environ = {}
         resp = None
         try:
             self.cfg.pre_request(self, req)
-            request_start = datetime.now()
+
             resp, environ = wsgi.create(req, client, addr,
                                         listener.getsockname(), self.cfg)
             # Force the connection closed until someone shows
@@ -185,8 +190,27 @@ class SyncWorker(base.Worker):
                 self.log.info("Worker %s tells master to restart it.", self.pid)
                 self.call_when_tired(self.pid)
 
+            # time 2
+            time2 = int((dt.datetime.utcnow() - dt.datetime(1970, 1, 1)).total_seconds() * 1e6)
 
-            respiter = self.wsgi(environ, resp.start_response)
+            respiter1 = self.wsgi(environ, resp.start_response)
+
+            # time 3
+            time3 = int((dt.datetime.utcnow() - dt.datetime(1970, 1, 1)).total_seconds() * 1e6)
+
+            info = json.dumps({ "t1": time1, "d1": time2 - time1, "d2": time3 - time2, "pid": self.pid, "nr": self.nr, "max": self.max_requests})
+            info_bytes = info.encode()
+
+            respiter = chain(iter(['{"res": '.encode()]), respiter1, iter([', "info": '.encode()]), iter([info_bytes]), iter(['}'.encode()])) # join iterators
+
+            ### Modify Content-Length in both places
+            resp.response_length += len(info_bytes) + 19
+
+
+            for i in range(len(resp.headers)):
+                if(resp.headers[i][0] == 'Content-Length'):
+                    resp.headers[i] = (resp.headers[i][0], str(resp.response_length))
+
             try:
                 if isinstance(respiter, environ['wsgi.file_wrapper']):
                     resp.write_file(respiter)
@@ -194,8 +218,9 @@ class SyncWorker(base.Worker):
                     for item in respiter:
                         resp.write(item)
                 resp.close()
-                request_time = datetime.now() - request_start
-                self.log.access(resp, req, environ, request_time)
+
+
+                self.log.access(resp, req, environ, time3 - time1)
             finally:
                 if hasattr(respiter, "close"):
                     respiter.close()
