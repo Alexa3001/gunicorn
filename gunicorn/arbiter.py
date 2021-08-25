@@ -122,7 +122,7 @@ class Arbiter(object):
 
 
         if self.cfg.max_restarting_workers > 0:
-            self.max_restarting_workers = cfg.max_restarting_workers
+            self.max_restarting_workers = self.cfg.max_restarting_workers
         else:
             self.max_restarting_workers = sys.maxsize
 
