@@ -63,6 +63,7 @@ class Worker(object):
         else:
             self.max_requests = sys.maxsize
 
+
         self.alive = True
         self.log = log
         self.tmp = WorkerTmp(cfg)

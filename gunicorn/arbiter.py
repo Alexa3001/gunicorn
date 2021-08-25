@@ -35,7 +35,7 @@ class Arbiter(object):
     new_workers = []
 
     ### Maximum number of workers that are allowed to restart at the same time
-    MAX_RESTARTING_WORKERS = 1
+    #MAX_RESTARTING_WORKERS = 1
 
 
     # A flag indicating if a worker failed to
@@ -120,6 +120,15 @@ class Arbiter(object):
         self.timeout = self.cfg.timeout
         self.proc_name = self.cfg.proc_name
 
+
+        if self.cfg.max_restarting_workers > 0:
+            self.max_restarting_workers = cfg.max_restarting_workers
+        else:
+            self.max_restarting_workers = sys.maxsize
+
+        self.max_restarting_workers = 1
+
+
         self.log.debug('Current configuration:\n{0}'.format(
             '\n'.join(
                 '  {0}: {1}'.format(config, value.value)
@@ -134,6 +143,7 @@ class Arbiter(object):
 
         if self.cfg.preload_app:
             self.app.wsgi()
+
 
 
     # Initialize the pipe in which the workers write their pids when they want to be replaced
@@ -611,7 +621,7 @@ class Arbiter(object):
             if not ready[0]:  # nothing to be read from the pipe
                 return
 
-            while len(self.old_workers) < self.MAX_RESTARTING_WORKERS:
+            while len(self.old_workers) < self.max_restarting_workers:
                 worker_pid_in_bytes = os.read(self.OLD_PIPE[0], 2)
                 if (len(worker_pid_in_bytes) == 0):
                     break

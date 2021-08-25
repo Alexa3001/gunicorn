@@ -182,6 +182,7 @@ class SyncWorker(base.Worker):
             # a buffering proxy that supports Keep-Alive to
             # the backend.
             resp.force_close()
+
             self.nr += 1
             if self.nr == self.max_requests: ### change >= to ==
                 # self.log.info("Autorestarting worker after current request.")
@@ -205,7 +206,6 @@ class SyncWorker(base.Worker):
 
             ### Modify Content-Length in both places
             resp.response_length += len(info_bytes) + 19
-
 
             for i in range(len(resp.headers)):
                 if(resp.headers[i][0] == 'Content-Length'):

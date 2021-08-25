@@ -767,6 +767,20 @@ class MaxRequestsJitter(Setting):
         """
 
 
+class MaxRestartingWorkers(Setting):
+    name = "max_restarting_workers"
+    section = "Worker Processes"
+    cli = ["--max-restarting-workers"]
+    meta = "INT"
+    validator = validate_pos_int
+    type = int
+    default = 0
+    desc = """\
+        The maximum number of workers which can be restarted at the same time. 
+        """
+    
+
+
 class Timeout(Setting):
     name = "timeout"
     section = "Worker Processes"
