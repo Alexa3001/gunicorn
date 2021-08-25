@@ -63,6 +63,8 @@ class Worker(object):
         else:
             self.max_requests = sys.maxsize
 
+        self.enrich_response = cfg.enrich_response
+
 
         self.alive = True
         self.log = log

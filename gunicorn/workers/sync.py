@@ -169,7 +169,8 @@ class SyncWorker(base.Worker):
 
     def handle_request(self, listener, req, client, addr):
         # time 1
-        time1 = int((dt.datetime.utcnow() - dt.datetime(1970,1,1)).total_seconds() * 1e6)
+        time1_raw = dt.datetime.utcnow()
+        time1 = int((time1_raw - dt.datetime(1970,1,1)).total_seconds() * 1e6)
 
         environ = {}
         resp = None
@@ -192,24 +193,32 @@ class SyncWorker(base.Worker):
                 self.call_when_tired(self.pid)
 
             # time 2
-            time2 = int((dt.datetime.utcnow() - dt.datetime(1970, 1, 1)).total_seconds() * 1e6)
+            time2_raw = dt.datetime.utcnow()
+            time2 = int((time2_raw - dt.datetime(1970, 1, 1)).total_seconds() * 1e6)
 
             respiter1 = self.wsgi(environ, resp.start_response)
 
             # time 3
-            time3 = int((dt.datetime.utcnow() - dt.datetime(1970, 1, 1)).total_seconds() * 1e6)
+            time3_raw = dt.datetime.utcnow()
+            time3 = int((time3_raw - dt.datetime(1970, 1, 1)).total_seconds() * 1e6)
 
-            info = json.dumps({ "t1": time1, "d1": time2 - time1, "d2": time3 - time2, "pid": self.pid, "nr": self.nr, "max": self.max_requests})
-            info_bytes = info.encode()
 
-            respiter = chain(iter(['{"res": '.encode()]), respiter1, iter([', "info": '.encode()]), iter([info_bytes]), iter(['}'.encode()])) # join iterators
+            if self.enrich_response:
+                info = json.dumps({ "t1": time1, "d1": time2 - time1, "d2": time3 - time2, "pid": self.pid, "nr": self.nr, "max": self.max_requests})
+                info_bytes = info.encode()
 
-            ### Modify Content-Length in both places
-            resp.response_length += len(info_bytes) + 19
+                respiter = chain(iter(['{"res": '.encode()]), respiter1, iter([', "info": '.encode()]), iter([info_bytes]), iter(['}'.encode()])) # join iterators
 
-            for i in range(len(resp.headers)):
-                if(resp.headers[i][0] == 'Content-Length'):
-                    resp.headers[i] = (resp.headers[i][0], str(resp.response_length))
+                ### Modify Content-Length in both places
+                resp.response_length += len(info_bytes) + 19
+
+                for i in range(len(resp.headers)):
+                    if(resp.headers[i][0] == 'Content-Length'):
+                        resp.headers[i] = (resp.headers[i][0], str(resp.response_length))
+            else:
+                respiter = respiter1
+
+
 
             try:
                 if isinstance(respiter, environ['wsgi.file_wrapper']):
@@ -220,7 +229,7 @@ class SyncWorker(base.Worker):
                 resp.close()
 
 
-                self.log.access(resp, req, environ, time3 - time1)
+                self.log.access(resp, req, environ, time3_raw - time1_raw)
             finally:
                 if hasattr(respiter, "close"):
                     respiter.close()

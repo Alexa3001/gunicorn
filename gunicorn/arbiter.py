@@ -34,10 +34,6 @@ class Arbiter(object):
     ### a queue containing the new workers which have already reached the "run" function and started handling requests
     new_workers = []
 
-    ### Maximum number of workers that are allowed to restart at the same time
-    #MAX_RESTARTING_WORKERS = 1
-
-
     # A flag indicating if a worker failed to
     # to boot. If a worker process exist with
     # this error code, the arbiter will terminate.

@@ -778,7 +778,6 @@ class MaxRestartingWorkers(Setting):
     desc = """\
         The maximum number of workers which can be restarted at the same time. 
         """
-    
 
 
 class Timeout(Setting):
@@ -903,6 +902,34 @@ class LimitRequestFieldSize(Setting):
            up for DDOS attacks.
         """
 
+
+class EnrichResponse(Setting):
+    name = "enrich_response"
+    section = 'Debugging'
+    cli = ['--enrich-response']
+    validator = validate_bool
+    action = 'store_true'
+    default = False
+
+    desc = '''\
+            Add extra information in the http response body. Works only for sync worker type.
+            While handling a request, 3 timestamps are taken (in microseconds, since 1st of January, 1970):
+            * ``time 1`` - immediately after entering "handle_request" 
+            * ``time 2`` - just before getting the response
+            * ``time 3`` - immediately after getting the response
+
+            The following information is inserted into the response body:
+            * ``t1``:  time1
+            * ``d1``:  time2 - time1
+            * ``d2``:  time3 - time2
+            * ``pid``: the pid of the worker handling the request
+            * ``nr``:  number of requests handled by this worker so far
+            * ``max``: number of requests planned for this worker (this can be exceeded a little bit because of the rolling restarting strategy)
+            
+            The new response is a json with two keys:
+            "res" contains the original response
+            "info" contains the extra information
+        '''
 
 class Reload(Setting):
     name = "reload"
