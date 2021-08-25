@@ -122,9 +122,6 @@ class Arbiter(object):
         else:
             self.max_restarting_workers = sys.maxsize
 
-        self.max_restarting_workers = 1
-
-
         self.log.debug('Current configuration:\n{0}'.format(
             '\n'.join(
                 '  {0}: {1}'.format(config, value.value)
