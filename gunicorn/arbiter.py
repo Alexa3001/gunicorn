@@ -122,6 +122,7 @@ class Arbiter(object):
         else:
             self.max_restarting_workers = sys.maxsize
 
+
         self.log.debug('Current configuration:\n{0}'.format(
             '\n'.join(
                 '  {0}: {1}'.format(config, value.value)
@@ -709,7 +710,7 @@ class Arbiter(object):
         ### Added the wakeup() function of the master as a parameter for the new worker
         worker = self.worker_class(self.worker_age, self.pid, self.LISTENERS,
                                    self.app, self.timeout / 2.0,
-                                   self.cfg, self.log, self.wakeup, self.worker_is_tired, self.worker_is_ready)
+                                   self.cfg, self.log, self.wakeup, self.worker_is_tired, self.worker_is_ready, is_new)
         self.cfg.pre_fork(self, worker)
         pid = os.fork()
         if pid != 0: # Parent process
@@ -727,7 +728,7 @@ class Arbiter(object):
             util._setproctitle("worker [%s]" % self.proc_name)
             self.log.info("Booting worker with pid: %s", worker.pid)
             self.cfg.post_fork(self, worker)
-            worker.init_process(is_new) ###
+            worker.init_process()
             self.log.debug("Worker %s is about to close without problems", worker.pid)
             sys.exit(0)
         except SystemExit:

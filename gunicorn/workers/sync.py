@@ -88,6 +88,7 @@ class SyncWorker(base.Worker):
                 return
 
     def run_for_multiple(self, timeout):
+
         while self.alive:
             self.notify()
 
@@ -111,9 +112,10 @@ class SyncWorker(base.Worker):
             if not self.is_parent_alive():
                 return
 
-    def run(self, is_new): ###
+    def run(self): ###
         ### Notify master that this worker is ready
-        if is_new and self.wait_for_new_workers:
+
+        if self.wait_for_new_workers and self.is_new and self.warmup_requests == 0:
             self.call_when_ready(self.pid)
 
 
@@ -203,6 +205,10 @@ class SyncWorker(base.Worker):
             # time 3
             time3_raw = dt.datetime.utcnow()
             time3 = int((time3_raw - dt.datetime(1970, 1, 1)).total_seconds() * 1e6)
+
+
+            if self.wait_for_new_workers and self.is_new and self.warmup_requests == self.nr:
+                self.call_when_ready(self.pid)
 
 
             if self.enrich_response:

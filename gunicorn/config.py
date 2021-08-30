@@ -791,6 +791,22 @@ class MaxRestartingWorkers(Setting):
         """
 
 
+class WarmupRequests(Setting):
+    name = "warmup_requests"
+    section = "Worker Processes"
+    cli = ["--warmup-requests"]
+    meta = "INT"
+    validator = validate_pos_int
+    type = int
+    default = 0
+    desc = """\
+        The number of requests a new worker needs to handle until the old worker can be killed.
+        """
+
+
+
+
+
 class Timeout(Setting):
     name = "timeout"
     section = "Worker Processes"
