@@ -64,6 +64,7 @@ class Worker(object):
             self.max_requests = sys.maxsize
 
         self.enrich_response = cfg.enrich_response
+        self.wait_for_new_workers = cfg.wait_for_new_workers
 
 
         self.alive = True

@@ -115,7 +115,7 @@ class Arbiter(object):
         self.num_workers = self.cfg.workers
         self.timeout = self.cfg.timeout
         self.proc_name = self.cfg.proc_name
-
+        self.wait_for_new_workers = self.cfg.wait_for_new_workers
 
         if self.cfg.max_restarting_workers > 0:
             self.max_restarting_workers = self.cfg.max_restarting_workers
@@ -181,11 +181,14 @@ class Arbiter(object):
 
         self.init_signals()
 
-        ### Initialize the pipe in which the workers write their pids when they want to be replaced
-        self.init_old_pipe()
 
-        ### Initialize the pipe in which the new workers write their pids when they are ready
-        self.init_new_pipe()
+        if self.wait_for_new_workers:
+            ### Initialize the pipe in which the workers write their pids when they want to be replaced
+            self.init_old_pipe()
+
+            ### Initialize the pipe in which the new workers write their pids when they are ready
+            self.init_new_pipe()
+
 
         if not self.LISTENERS:
             fds = None
@@ -255,7 +258,8 @@ class Arbiter(object):
                 sig = self.SIG_QUEUE.pop(0) if self.SIG_QUEUE else None
                 if sig is None:
                     self.sleep()
-                    self.replace_workers()
+                    if self.wait_for_new_workers:
+                        self.replace_workers()
                     self.murder_workers()
                     self.manage_workers()
                     continue
@@ -697,7 +701,7 @@ class Arbiter(object):
                                   "value": active_worker_count,
                                   "mtype": "gauge"})
 
-        self.log.debug("In the main loop, there are %s workers: %s", self.num_workers, list(self.WORKERS.keys()))
+        self.log.debug("In the main loop, %s worker(s): %s.", len(list(self.WORKERS.keys())), list(self.WORKERS.keys()))
 
     def spawn_worker(self, is_new = False):
         self.worker_age += 1

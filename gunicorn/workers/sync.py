@@ -113,7 +113,7 @@ class SyncWorker(base.Worker):
 
     def run(self, is_new): ###
         ### Notify master that this worker is ready
-        if(is_new):
+        if is_new and self.wait_for_new_workers:
             self.call_when_ready(self.pid)
 
 
@@ -185,12 +185,14 @@ class SyncWorker(base.Worker):
             resp.force_close()
 
             self.nr += 1
-            if self.nr == self.max_requests: ### change >= to ==
-                # self.log.info("Autorestarting worker after current request.")
-                # self.alive = False
 
-                self.log.info("Worker %s tells master to restart it.", self.pid)
-                self.call_when_tired(self.pid)
+            if self.nr == self.max_requests:
+                if self.wait_for_new_workers: # use the pipe to announce that you reached the planned number of requests
+                    self.log.info("Worker %s tells master to restart it.", self.pid)
+                    self.call_when_tired(self.pid)
+                else: # autorestart immediately
+                    self.log.info("Autorestarting worker after current request.")
+                    self.alive = False
 
             # time 2
             time2_raw = dt.datetime.utcnow()

@@ -766,6 +766,17 @@ class MaxRequestsJitter(Setting):
         .. versionadded:: 19.2
         """
 
+class WaitForNewWorkers(Setting):
+    name = "wait_for_new_workers"
+    section = "Worker Processes"
+    cli = ["--wait-for-new-workers"]
+    validator = validate_bool
+    action = 'store_true'
+    default = False
+    desc = """\
+        Wait for a new worker to become ready before killing an old worker. 
+        """
+
 
 class MaxRestartingWorkers(Setting):
     name = "max_restarting_workers"
