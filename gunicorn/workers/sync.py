@@ -212,7 +212,7 @@ class SyncWorker(base.Worker):
 
 
             if self.enrich_response:
-                info = json.dumps({ "t1": time1, "d1": time2 - time1, "d2": time3 - time2, "pid": self.pid, "nr": self.nr, "max": self.max_requests})
+                info = json.dumps({ "spawn": self.spawning_time, "t1": time1, "d1": time2 - time1, "d2": time3 - time2, "pid": self.pid, "nr": self.nr, "max": self.max_requests})
                 info_bytes = info.encode()
 
                 respiter = chain(iter(['{"res": '.encode()]), respiter1, iter([', "info": '.encode()]), iter([info_bytes]), iter(['}'.encode()])) # join iterators

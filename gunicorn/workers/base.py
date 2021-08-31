@@ -9,6 +9,7 @@ import signal
 import sys
 import time
 import traceback
+import datetime as dt
 from datetime import datetime
 from random import randint
 from ssl import SSLError
@@ -26,6 +27,7 @@ from gunicorn.reloader import reloader_engines
 from gunicorn.workers.workertmp import WorkerTmp
 
 
+
 class Worker(object):
 
     SIGNALS = [getattr(signal, "SIG%s" % x) for x in (
@@ -41,6 +43,8 @@ class Worker(object):
         current process. If there's a need to make process wide
         changes you'll want to do that in ``self.init_process()``.
         """
+        self.spawning_time = int((dt.datetime.utcnow() - dt.datetime(1970, 1, 1)).total_seconds() * 1e6)
+
         self.age = age
         self.pid = "[booting]"
         self.ppid = ppid
