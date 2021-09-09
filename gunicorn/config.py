@@ -940,12 +940,14 @@ class EnrichResponse(Setting):
 
     desc = '''\
             Add extra information in the http response body. Works only for sync worker type.
-            While handling a request, 3 timestamps are taken (in microseconds, since 1st of January, 1970):
+            While handling a request, a few timestamps are taken (in microseconds, since 1st of January, 1970):
+            * ``spawning time`` - when worker object is initialized (this is before forking the new process)
             * ``time 1`` - immediately after entering "handle_request" 
             * ``time 2`` - just before getting the response
             * ``time 3`` - immediately after getting the response
 
             The following information is inserted into the response body:
+            * ``spawn``: spawning time 
             * ``t1``:  time1
             * ``d1``:  time2 - time1
             * ``d2``:  time3 - time2
